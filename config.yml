@@ -1,0 +1,41 @@
+# Configuration
+
+serializer: 'betterjson'
+rpc_exchange: 'nameko-rpc'
+max_workers: 10
+parent_calls_tracked: 10
+AMQP_URI: 'pyamqp://guest:guest@localhost'
+WEB_SERVER_ADDRESS: '0.0.0.0:8888'
+AUTORELOAD: true
+HEARTBEAT: 3600
+LOGGING:
+    version: 1
+    formatters:
+        verbose:
+            format: '%(asctime)s | %(levelname)-8s | %(name)-25s | %(message)s'
+    handlers:
+        console:
+            class: logging.StreamHandler
+            formatter: verbose
+    '*':
+        level: DEBUG
+        handlers: [console]
+    root:
+        level: DEBUG
+        handlers: [console]
+    nameko:
+        level: DEBUG
+        handlers: [console]
+        propogate: False
+    kombu:
+        handlers: [console]
+        propogate: False
+
+EXTRA_PATH: extra_path
+MISO_REDIS:
+    url: 'redis://127.0.0.1:6379/0'
+    options:
+        retry_on_timeout: True
+        decode_responses: True
+
+

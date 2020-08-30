@@ -1,0 +1,8 @@
+tox.ini
+scratch/
+tests/
+docker/
+
+__pycache__
+*.pyc
+*.swp

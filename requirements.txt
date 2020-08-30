@@ -1,0 +1,10 @@
+chardet==3.0.4
+nameko==2.8.3
+munch==2.2.0
+pendulum==1.4.0
+pyflakes==1.6.0
+PyJWT==1.5.3
+PyPDF2==1.26.0
+redis==2.10.6
+requests==2.18.4
+simplejson==3.13.2
