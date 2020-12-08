@@ -108,15 +108,30 @@ class MisoServiceContainer(ServiceContainer):
 
             if isinstance(worker_ctx.entrypoint, MisoEntrypointModifications):
                 result = ShimExecutor(method, worker_ctx).apply()
-                # Convert any results from enhanced entrypoints to JSON if possible
-                if not isinstance(result, str) and isinstance(worker_ctx.entrypoint, MisoHttpRequestHandler):
-                    if isinstance(result, Result):
-                        result = dumps(result.to_dict())
-                    if isinstance(result, (dict, list)):
-                        result = dumps(result)
-                    if not isinstance(result, Response):
-                        result += '\n'
 
+                # Convert any results from enhanced entrypoints to JSON if possible
+                if isinstance(worker_ctx.entrypoint, MisoHttpRequestHandler):
+                    status_code, headers = 200, {}
+
+                    if isinstance(result, tuple):
+                        if len(result) == 2:
+                            status_code, output = result
+                        else:
+                            status_code, headers, output = result
+                    else:
+                        output = result
+
+                    if isinstance(output, Response):
+                        headers.update(output.headers)
+                        output = output.get_data(as_text=True)
+                    if isinstance(output, Result):
+                        output = output.to_dict()
+                    if isinstance(output, (dict, list)):
+                        output = dumps(output, indent=2, sort_keys=True)
+                    if isinstance(output, str) and output[-1] != '\n':
+                        output += '\n'
+
+                    result = status_code, headers, output
             else:
                 try:
                     _log.debug('calling handler for %s', worker_ctx)

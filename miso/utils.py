@@ -2,8 +2,37 @@ import os
 import time
 import re
 import hashlib
+import pendulum
 from socket import gethostname
 from munch import Munch, munchify
+
+
+sleep = time.sleep
+
+
+def epoch(small=True):
+    """ Short hand to get current epoch """
+    epoch_ = int(time.time() * 1000)
+    if small is True:
+        epoch_ = epoch_ / 1000
+    return epoch_
+
+
+def isoformat(tz='UTC', date_only=False, env_tz=False):
+    if env_tz is True:
+        tz = os.environ.get('TZ', tz)
+    suffix = ('Z' if tz == 'UTC' else '')
+    if date_only:
+        return pendulum.now('UTC').isoformat().split('T')[0]+'T00:00:00'+suffix
+    else:
+        return pendulum.now('UTC').isoformat().split('.')[0]+suffix
+
+
+def fake_proxy_config():
+    return {
+        'AMQP_URI': os.environ.get('NAMEKO_AMQP_URL'),
+        'serializer': 'betterjson'
+    }
 
 
 def is_debug_env():
@@ -55,14 +84,6 @@ def force_list(obj):
 
 def sleep(dur):
     time.sleep(dur)
-
-
-def epoch(small=True):
-    """ Short hand to get current epoch """
-    epoch_ = int(time.time() * 1000)
-    if small is True:
-        epoch_ = epoch_ / 1000
-    return epoch_
 
 
 def md5sum(md5str):

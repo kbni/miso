@@ -255,7 +255,7 @@ class ForceObject(Shim):
         self.enabled = self.override.options.force_res_object
 
     def post_call(self):
-        if self.enabled and not isinstance(self.override.result, (Response, Result)):
+        if self.enabled and not isinstance(self.override.result, (tuple, Response, Result)):
             if isinstance(self.override.result, bool):
                 self.override.result = Result(result=self.override.result)
             else:

@@ -6,6 +6,7 @@ import logging
 import logging.config
 import argparse
 
+from envyaml import EnvYAML
 from nameko.cli.run import import_service
 from nameko.runners import run_services
 
@@ -23,10 +24,10 @@ os.environ.setdefault('FORKED_BY_MULTIPROCESSING', '1')
 
 
 class MisoRunner:
-    def __init__(self, config):
-        with open(config) as config_fh:
-            self.config = yaml.load(config_fh, Loader=yaml.FullLoader)
-        extra_path = self.config.get('EXTRA_PATH', 'extra_path')
+    def __init__(self, config_file=None):
+        self.config = {}
+        if config_file and os.path.exists(config_file):
+            self.config = dict(**EnvYAML(config_file))
 
         logging.config.dictConfig(self.config['LOGGING'])
         register_better_json()
@@ -34,17 +35,16 @@ class MisoRunner:
         self.config['SERVICE_CONTAINER_CLS'] = SERVICE_CONTAINER_CLS
         self.logger = logging.getLogger('miso.run')
 
-        if not extra_path.startswith('/'):
-            extra_path = os.path.join(os.path.dirname(os.path.abspath(config)), extra_path)
-        if not os.path.exists(extra_path):
-            self.logger.warning('extra_path (%s) does not exist, still added to sys.path', extra_path)
-        sys.path.insert(0, extra_path)
+        extra_path = self.config.get('EXTRA_PATH', 'extra_path')
+        if os.path.exists(extra_path):
+            sys.path.insert(0, os.path.abspath(extra_path))
 
         self.state = State.get_state(config=self.config)
         self.redis = self.state.redis
         self.auto_reload = False
         self.modules = []
         self.no_auth = False
+        self.stateless = False
 
     def add_modules(self, module_list):
         for m in module_list:
@@ -71,9 +71,10 @@ class MisoRunner:
             return self.state.get_available_services()
 
     def main(self):
-        self.state.update_environment()
-        self.state.update(started=epoch(), stopped=None, ip_addr=self.state.node_address)
-        self.logger.info('This instance is %s on %s', self.state.node_id, self.state.cluster_id)
+        if not self.stateless:
+            self.state.update_environment()
+            self.state.update(started=epoch(), stopped=None, ip_addr=self.state.node_address)
+            self.logger.info('This instance is %s on %s', self.state.node_id, self.state.cluster_id)
         stopped = False
         while stopped is False:
             store = ServiceStore(from_modules=self.modules)
@@ -81,24 +82,31 @@ class MisoRunner:
             with run_services(self.config, *store.services, kill_on_exit=True):
                 while True:
                     try:
-                        self.state.confirm_master()
+                        if not self.stateless:
+                            self.state.confirm_master()
                         time.sleep(1 if self.auto_reload else 5)
                         if self.auto_reload and store.should_reload():
                             self.logger.info('Server reload!')
-                            self.state.update(stopped=epoch())
+                            if not self.stateless:
+                                self.state.update(stopped=epoch())
                             break
-                        self.state.update(last_seen=epoch())
+                        if not self.stateless:
+                            self.state.update(last_seen=epoch())
                     except KeyboardInterrupt:
                         self.logger.warning('Stopping nameko containers (someone hit ^C)')
-                        self.state.update(stopped=epoch())
+                        if not self.stateless:
+                            self.state.update(stopped=epoch())
                         stopped = True
                         break
 
 
-def env_from_file(env_file):
+def env_from_file(env_file, require_env=False):
     if not os.path.exists(env_file):
-        sys.stderr.write(f'Environment file "{env_file}" does not exist.\n')
-        sys.exit(1)
+        if require_env:
+            sys.stderr.write(f'Environment file "{env_file}" does not exist.\n')
+            sys.exit(1)
+        else:
+            return
     with open(env_file) as fh:
         for line in fh.readlines():
             line = line.strip()
@@ -114,8 +122,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', '-c', type=str, default='./config.yml')
     parser.add_argument('--environment', '-e', type=str, default='./environment')
+
+    parser.add_argument('--stateless', dest='stateless', action='store_const', const=True)
     parser.add_argument('--node', '-n', type=str, default=None, help='Node ID override')
     parser.add_argument('--cluster', '-k', type=str, default=None, help='Cluster ID override')
+
     parser.add_argument('--services', '-S', dest='list_services', action='store_const', const=True)
     parser.add_argument('--autoreload', '-R', dest='autoreload', action='store_const', const=True)
     parser.add_argument('--no-auth', dest='no_auth', action='store_const', const=True)
@@ -132,7 +143,10 @@ if __name__ == '__main__':
     if env_file:
         env_from_file(env_file)
 
-    mr = MisoRunner(options.config)
+    use_config = options.config
+    if not os.path.exists(use_config) and os.path.exists('./miso/config.yml'):
+        use_config = './miso/config.yml'
+    mr = MisoRunner(use_config)
 
     if options.no_auth:
         mr.no_auth = True
@@ -140,6 +154,8 @@ if __name__ == '__main__':
     if options.autoreload:
         mr.auto_reload = True
 
+    if options.stateless:
+        mr.stateless = True
 
     modules = []
     if options.modules:
